@@ -1,0 +1,87 @@
+{
+  "project_name": "Brigade Eternia",
+  "developer": "Brigade Group",
+  "location": {
+    "area": "Yelahanka, North Bengaluru",
+    "address": "Police Station, SH 9, near Yelahanka, Ambedkar Colony, Yelahanka, Bengaluru, 560065",
+    "landmark": "Near East West College Of Engineering"
+  },
+  "project_details": {
+    "total_land_area_acres": 14,
+    "open_space_percentage": 65,
+    "total_units": 1124,
+    "number_of_floors": 14,
+    "parking_type": "Covered",
+    "possession_date": "March 2030",
+    "rera_number": "PRM/KA/RERA/1251/309/PR/070325/007559",
+    "construction_stage": "Under Construction"
+  },
+  "configurations": [
+    {
+      "type": "3 BHK",
+      "size_sqft": 1620,
+      "price_cr": 2.75,
+      "price_display": "₹2.75 Cr"
+    },
+    {
+      "type": "4 BHK",
+      "size_sqft": 1700,
+      "price_cr": 2.89,
+      "price_display": "₹2.89 Cr"
+    },
+    {
+      "type": "3 BHK",
+      "size_sqft": 1820,
+      "price_cr": 3.09,
+      "price_display": "₹3.09 Cr"
+    },
+    {
+      "type": "3 BHK",
+      "size_sqft": 2000,
+      "price_cr": 3.40,
+      "price_display": "₹3.40 Cr"
+    },
+    {
+      "type": "4 BHK",
+      "size_sqft": 2700,
+      "price_cr": 4.59,
+      "price_display": "₹4.59 Cr"
+    },
+    {
+      "type": "4 BHK",
+      "size_sqft": 2950,
+      "price_cr": 5.01,
+      "price_display": "₹5.01 Cr"
+    }
+  ],
+  "amenities": [
+    "Club House",
+    "Central Courtyard",
+    "Park",
+    "Children Play Area",
+    "Gym",
+    "Swimming Pool",
+    "Cricket Pitch",
+    "Badminton Court",
+    "Basketball Court",
+    "Indoor Game Room",
+    "Vaastu Compliant",
+    "Visitor Parking",
+    "24/7 Security",
+    "Sewage Treatment Plant",
+    "Covered Car Parking",
+    "Gas Pipeline",
+    "Power Backup"
+  ],
+  "highlights": [
+    "14 acres of luxury residential development",
+    "65% open space with expansive green areas",
+    "Vibrant central courtyard - multi-functional hub",
+    "World-class amenities for all ages",
+    "Premium homes with stunning views",
+    "By renowned Brigade Group",
+    "Strategic location in Yelahanka",
+    "Near educational institutions and tech hubs"
+  ],
+  "description": "Brigade Eternia is a new launch luxury residential apartment project by the renowned Brigade Group, located in Yelahanka, North Bengaluru. The development is spread over approximately 14 acres and features spacious homes with a strong emphasis on amenities, green spaces, and excellent connectivity. At its core lies a vibrant central courtyard, a thoughtfully designed multi-functional hub where residents of all ages can stay active, engaged, and connected."
+}

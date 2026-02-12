@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+websockets
+twilio
+aiohttp
+pydantic
+deepgram-sdk<5.0
+cartesia
+python-dotenv
+groq
+aiofiles
+pyaudio
+pydub
