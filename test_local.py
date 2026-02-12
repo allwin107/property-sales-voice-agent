@@ -370,8 +370,8 @@ class LocalVoiceClient:
                 if self.last_user_speech_time:
                     silence_duration = datetime.now().timestamp() - self.last_user_speech_time
                     
-                    if silence_duration >= SILENCE_TIMEOUT:
-                        print(f"\\n[TIMEOUT] No speech detected for {SILENCE_TIMEOUT} seconds")
+                    if silence_duration >= RECORD_TIMEOUT:
+                        print(f"\\n[TIMEOUT] No speech detected for {RECORD_TIMEOUT} seconds")
                         await self.graceful_shutdown()
                         break
                         

@@ -281,7 +281,7 @@ async def initialize_call_session(session_id: str, websocket: WebSocket):
     
     # Send greeting with first name only
     first_name = form_data['name'].strip().split()[0] if form_data['name'] else "there"
-    greeting = f"Hi {first_name}! This is {config.AGENT_NAME} from {config.COMPANY_NAME}. Thank you for your interest in Brigade Eternia! I'm excited to help you explore this amazing project by Brigade Group. What brings you to Eternia today?"
+    greeting = f"Hi, am I speaking with {first_name}?"
     
     await tts_service.synthesize(
         text=greeting,
