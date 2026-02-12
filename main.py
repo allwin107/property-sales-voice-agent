@@ -238,16 +238,16 @@ async def initialize_call_session(session_id: str, websocket: WebSocket):
     
     tts_kwargs = {}
     if config.TTS_PROVIDER == 'cartesia':
-        tts_kwargs = {'model_id': 'sonic-english', 'speed': 'normal'}
+        tts_kwargs = {'model_id': config.CARTESIA_MODEL_ID, 'speed': config.CARTESIA_SPEED}
     
     tts_service = TTSServiceFactory.create(
         provider=config.TTS_PROVIDER,
         api_key=tts_api_key,
-        voice_id=config.CARTESIA_VOICE_ID if config.TTS_PROVIDER == 'cartesia' else 'meera',
+        voice_id=config.CARTESIA_VOICE_ID if config.TTS_PROVIDER == 'cartesia' else config.SARVAM_VOICE_ID,
         **tts_kwargs
     )
     
-    llm_service = GroqLLMService(api_key=config.GROQ_API_KEY, max_history=10)
+    llm_service = GroqLLMService(api_key=config.GROQ_API_KEY, max_history=config.LLM_MAX_HISTORY)
     
     # Initialize all services
     await stt_service.initialize(

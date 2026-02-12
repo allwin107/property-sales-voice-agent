@@ -8,8 +8,8 @@ import aiohttp
 import base64
 from typing import Callable, Optional
 from services.tts_base import BaseTTSService
+import config
 import re
-
 logger = logging.getLogger(__name__)
 
 
@@ -22,10 +22,10 @@ class SarvamTTSService(BaseTTSService):
     def __init__(
         self, 
         api_key: str, 
-        voice_id: str = "meera", 
-        language: str = "hi-IN",
-        speed: float = 1.0,
-        model: str = "bulbul:v3"
+        voice_id: str = None, 
+        language: str = None,
+        speed: float = None,
+        model: str = None
     ):
         """
         Initialize Sarvam TTS service
@@ -38,17 +38,17 @@ class SarvamTTSService(BaseTTSService):
             model: Model to use (default: "bulbul:v3")
         """
         self.api_key = api_key
-        self.voice_id = voice_id
-        self.language = language
-        self.speed = speed
-        self.model = model
+        self.voice_id = voice_id or config.SARVAM_VOICE_ID
+        self.language = language or config.SARVAM_LANGUAGE
+        self.speed = speed or config.SARVAM_SPEED
+        self.model = model or config.SARVAM_MODEL
         self._session = None
         self._is_initialized = False
         self._current_task = None
         self._is_stopped = False
         self._last_spoken_text = ""
         
-        logger.info(f"[TTS] SarvamTTSService instance created (voice={voice_id}, lang={language}, model={model})")
+        logger.info(f"[TTS] SarvamTTSService instance created (voice={self.voice_id}, lang={self.language}, model={self.model})")
     
     async def initialize(self) -> bool:
         """
@@ -71,7 +71,7 @@ class SarvamTTSService(BaseTTSService):
 
     async def _synthesize_chunk(self, text: str) -> Optional[bytes]:
         """Helper to synthesize a single chunk of text"""
-        url = "https://api.sarvam.ai/text-to-speech"
+        url = config.SARVAM_TTS_URL
         headers = {
             "api-subscription-key": self.api_key,
             "Content-Type": "application/json"
@@ -79,14 +79,13 @@ class SarvamTTSService(BaseTTSService):
         
         payload = {
             "text": text,
-            "target_language_code": self.language,
-            "speaker": self.voice_id,
-            "pace": self.speed,
+            "target_language_code": self.language or config.SARVAM_LANGUAGE,
+            "speaker": self.voice_id or config.SARVAM_VOICE_ID,
+            "pace": self.speed or config.SARVAM_SPEED,
             "speech_sample_rate": 8000,
             "enable_preprocessing": True,
-            "model": self.model
+            "model": self.model or config.SARVAM_MODEL
         }
-        
         try:
             async with self._session.post(url, json=payload, headers=headers) as response:
                 if response.status != 200:
@@ -223,9 +222,10 @@ class SarvamTTSService(BaseTTSService):
                 sentences.append(current_group.strip())
                 current_group = ""
                 
-        if current_group:
-            sentences.append(current_group.strip())
-            
+            if current_group:
+                sentences.append(current_group.strip())
+                current_group = ""
+                
         # 3. Handle extremely long segments (like lists) that exceed grouping
         final_segments = []
         for s in sentences:
@@ -389,18 +389,18 @@ class SarvamTTSService(BaseTTSService):
 # Convenience function for quick initialization
 async def create_sarvam_tts_service(
     api_key: str,
-    voice_id: str = "meera",
-    language: str = "hi-IN",
-    speed: float = 1.0
+    voice_id: str = None,
+    language: str = None,
+    speed: float = None
 ) -> SarvamTTSService:
     """
     Create and initialize a Sarvam TTS service instance.
     
     Args:
         api_key: Sarvam AI API key
-        voice_id: Voice ID (default: "meera")
-        language: Language code (default: "hi-IN")
-        speed: Speaking pace (default: 1.0)
+        voice_id: Voice ID (default: config.SARVAM_VOICE_ID)
+        language: Language code (default: config.SARVAM_LANGUAGE)
+        speed: Speaking pace (default: config.SARVAM_SPEED)
         
     Returns:
         Initialized SarvamTTSService instance

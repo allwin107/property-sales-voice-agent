@@ -12,6 +12,7 @@ from deepgram import (
     LiveOptions
 )
 from services.stt_base import BaseSTTService
+import config
 
 logger = logging.getLogger(__name__)
 
@@ -66,10 +67,10 @@ class DeepgramSTTService(BaseSTTService):
                 self.callback_function = callback
             
             # Create Deepgram client with API key and keepalive config
-            config = DeepgramClientOptions(
+            dg_config = DeepgramClientOptions(
                 options={"keepalive": "true"}
             )
-            self.deepgram_client = DeepgramClient(self.api_key or api_key, config)
+            self.deepgram_client = DeepgramClient(self.api_key or api_key, dg_config)
             
             # Create WebSocket connection
             self.dg_connection = self.deepgram_client.listen.asyncwebsocket.v("1")
@@ -137,16 +138,16 @@ class DeepgramSTTService(BaseSTTService):
             
             # Configure options
             options = LiveOptions(
-                model="nova-3",
-                language="en",
+                model=config.DEEPGRAM_MODEL,
+                language=config.DEEPGRAM_LANGUAGE,
                 smart_format=True,
                 encoding=encoding,
                 channels=1,
-                sample_rate=8000,
+                sample_rate=config.DEEPGRAM_SAMPLE_RATE,
                 interim_results=True,
                 utterance_end_ms=1000,  # Minimum required by Deepgram API
                 vad_events=True,
-                endpointing=100  # Reduced from 200ms for faster detection
+                endpointing=config.DEEPGRAM_ENDPOINTING
             )
             
             # Performance optimization addons
@@ -174,7 +175,7 @@ class DeepgramSTTService(BaseSTTService):
             
         except Exception as e:
             logger.error(f"[ERROR] Failed to initialize Deepgram STT: {e}", exc_info=True)
-            self.is_connected = False
+            self._is_connected = False
             return False
     
     async def process_audio(self, audio_chunk: bytes) -> bool:

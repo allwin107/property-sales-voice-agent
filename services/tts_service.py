@@ -8,6 +8,7 @@ import time
 import uuid
 from cartesia import AsyncCartesia
 from services.tts_base import BaseTTSService
+import config
 
 logger = logging.getLogger(__name__)
 
@@ -17,21 +18,21 @@ class CartesiaTTSService(BaseTTSService):
     Enhanced TTS service with interruption handling and spoken text tracking for hospital calls
     """
     
-    def __init__(self, api_key: str, voice_id: str, model_id: str = "sonic-english", speed: str = "normal"):
+    def __init__(self, api_key: str, voice_id: str, model_id: str = None, speed: str = None):
         """
         Initialize Cartesia TTS service
         
         Args:
             api_key: Cartesia API key
             voice_id: Voice ID to use for synthesis
-            model_id: Model ID (default: "sonic-english")
+            model_id: Model ID (default: config.CARTESIA_MODEL_ID)
             speed: Speaking speed - can be "slowest", "slow", "normal", "fast", "fastest"
                    or float between -1.0 to 1.0
         """
         self.api_key = api_key
         self.voice_id = voice_id
-        self.model_id = model_id
-        self.speed = speed
+        self.model_id = model_id or config.CARTESIA_MODEL_ID
+        self.speed = speed or config.CARTESIA_SPEED
         self.client = AsyncCartesia(api_key=api_key)
         self.ws = None
         

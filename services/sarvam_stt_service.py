@@ -7,6 +7,7 @@ import asyncio
 import aiohttp
 from typing import Callable, Optional
 from services.stt_base import BaseSTTService
+import config
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +79,7 @@ class SarvamSTTService(BaseSTTService):
             self._ws_session = aiohttp.ClientSession()
             
             # Connect to Sarvam WebSocket endpoint
-            ws_url = "wss://api.sarvam.ai/speech-to-text-translate"
+            ws_url = config.SARVAM_STT_URL
             headers = {
                 "Authorization": f"Bearer {self.api_key}"
             }

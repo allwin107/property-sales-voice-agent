@@ -381,21 +381,24 @@ Format your response using this JSON schema:
             
             logger.debug(f"[LLM] Sending {len(messages)} messages to Groq")
             
-            # Make API call to Groq with optimized parameters
-            api_start = time.time()
-            
+            # Prepare API payload
             api_payload = {
                 "model": config.GROQ_MODEL,
                 "messages": messages,
-                "temperature": 0.3,  # Slightly higher for natural speech
-                "top_p": 0.2,
-                "max_tokens": 300,  # Reduced for speed
+                "temperature": config.LLM_TEMPERATURE, 
+                "top_p": config.LLM_TOP_P,
+                "max_tokens": config.LLM_MAX_TOKENS,
                 "response_format": {"type": "json_object"},
                 "stream": False
             }
+
+            # Make API call to Groq with optimized parameters and retry logic for rate limits
+            api_start = time.time()
+            max_retries = config.LLM_MAX_RETRIES
+            retry_delay = config.LLM_RETRY_DELAY
             
             async with self.session.post(
-                "https://api.groq.com/openai/v1/chat/completions",
+                config.GROQ_URL,
                 headers={
                     "Authorization": f"Bearer {self.api_key}",
                     "Content-Type": "application/json"
