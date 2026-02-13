@@ -548,7 +548,8 @@ class LocalVoiceClient:
             # Send initial greeting (identity confirmation - STEP 1)
             print("\n[TTS] Sending identity confirmation...")
             
-            welcome_greeting = f"Hi, am I speaking with {self.greeting_name}?"
+            # Use centralized greeting from config
+            welcome_greeting = config.GREETING_TEMPLATE.format(name=self.greeting_name)
             
             async def welcome_callback(audio_chunk: bytes, action: str):
                 await self.play_audio(audio_chunk, action)

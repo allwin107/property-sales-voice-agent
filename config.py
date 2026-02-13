@@ -51,7 +51,7 @@ GROQ_USE_FALLBACK = os.getenv("GROQ_USE_FALLBACK", "true").lower() == "true"
 
 # Token optimization
 MAX_CONVERSATION_HISTORY = int(os.getenv("MAX_CONVERSATION_HISTORY", "6"))  # Last 3 exchanges
-MAX_LLM_TOKENS = int(os.getenv("MAX_LLM_TOKENS", "150"))  # Reduced from 500
+MAX_LLM_TOKENS = int(os.getenv("MAX_LLM_TOKENS", "500"))  # Increased to 500 to prevent truncation in non-English JSON
 # STT - Deepgram Settings
 DEEPGRAM_MODEL = os.getenv("DEEPGRAM_MODEL", "nova-3")
 DEEPGRAM_LANGUAGE = os.getenv("DEEPGRAM_LANGUAGE", "en")
@@ -82,3 +82,45 @@ AGENT_NAME = "Rohan"
 COMPANY_NAME = "JLL Homes"
 DEVELOPER_NAME = "Brigade Group"
 KNOWLEDGE_BASE_PATH = "knowledge/brigade_eternia.json"
+
+# Language Configuration
+LANGUAGE = os.getenv("LANGUAGE", "english").lower()
+
+VOICE_MAPPINGS = {
+    "english": {
+        "cartesia_voice_id": "7ea5e9c2-b719-4dc3-b295-6e4ee1b18c26",
+        "sarvam_speaker": "meera",
+        "stt_lang": "en",
+        "tts_lang": "en-IN",
+        "agent_name": "Rohan",
+        "greeting": "Hi, am I speaking with {name}?",
+        "llm_max_tokens": 250
+    },
+    "tamil": {
+        "cartesia_voice_id": os.getenv("VOICE_ID_TAMIL", ""),
+        "sarvam_speaker": "saadhana",
+        "stt_lang": "ta",
+        "tts_lang": "ta-IN",
+        "agent_name": "ரோஹன்",  # Rohan in Tamil
+        "greeting": "ஹலோ, {name} தானே பேசறீங்க?",
+        "llm_max_tokens": 500
+    },
+    "hindi": {
+        "cartesia_voice_id": os.getenv("VOICE_ID_HINDI", ""),
+        "sarvam_speaker": "meera",
+        "stt_lang": "hi",
+        "tts_lang": "hi-IN",
+        "agent_name": "रोहन",  # Rohan in Hindi
+        "greeting": "हेलो, {name} बोल रहे हैं?",
+        "llm_max_tokens": 500
+    }
+}
+
+# Current language config
+LANG = VOICE_MAPPINGS.get(LANGUAGE, VOICE_MAPPINGS["english"])
+STT_LANGUAGE = LANG["stt_lang"]
+TTS_LANGUAGE = LANG["tts_lang"]
+AGENT_NAME = LANG["agent_name"]
+GREETING_TEMPLATE = LANG["greeting"]
+MAX_LLM_TOKENS = LANG["llm_max_tokens"]
+VOICE_ID = LANG["cartesia_voice_id"] if TTS_PROVIDER == "cartesia" else LANG["sarvam_speaker"]

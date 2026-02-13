@@ -76,36 +76,12 @@ class GroqLLMService:
     
     # Define dynamic fields for property information extraction
     PROPERTY_INFO_FIELDS = {
-        "property_type": {
-            "type": "string",
-            "description": "Type of property: apartment, villa, plot, commercial, or none",
-            "default": "none"
-        },
-        "budget_range": {
-            "type": "string",
-            "description": "Budget range (e.g., '20-30 lakhs'), or none",
-            "default": "none"
-        },
-        "location": {
-            "type": "string",
-            "description": "Preferred location/area, or none",
-            "default": "none"
-        },
-        "bedrooms": {
-            "type": "string",
-            "description": "Number of bedrooms, or none",
-            "default": "none"
-        },
-        "timeline": {
-            "type": "string",
-            "description": "Timeline: urgent, 3-6 months, exploring, or none",
-            "default": "none"
-        },
-        "requirements": {
-            "type": "string",
-            "description": "Specific requirements, or none",
-            "default": "none"
-        }
+        "property_type": {"type": "string", "description": "apartment, villa, plot, commercial, or none", "default": "none"},
+        "budget_range": {"type": "string", "description": "budget like '20-30 lakhs', or none", "default": "none"},
+        "location": {"type": "string", "description": "area name, or none", "default": "none"},
+        "bedrooms": {"type": "string", "description": "BHK count, or none", "default": "none"},
+        "timeline": {"type": "string", "description": "urgent, 3-6 months, or none", "default": "none"},
+        "requirements": {"type": "string", "description": "extra info, or none", "default": "none"}
     }
     
     # System prompt template for property enquiry agent
@@ -234,7 +210,7 @@ Remember: EVERY response = Acknowledge + Ask!"""
         
         # Check if template has placeholders
         if '{' not in self.system_prompt_template:
-            logger.warning("[FORMAT] System prompt has no placeholders")
+            # If it doesn't have placeholders, it might already be formatted
             return self.system_prompt_template
         
         try:
@@ -292,15 +268,21 @@ Remember: EVERY response = Acknowledge + Ask!"""
         if self.dynamic_fields:
             system_prompt = f"""{formatted_system_prompt}
 
-Extract information and respond using this JSON schema:
+You MUST only respond with a valid JSON object matching this schema:
 {json.dumps(compact_schema, indent=2)}
 
-IMPORTANT: Set fields to "none" if information is not provided by the caller yet."""
+CRITICAL:
+1. The 'response' field must contain your conversational output in the user's language.
+2. All other fields must contain the extracted information or "none".
+3. Do not include any text before or after the JSON object.
+4. Every response must be a single, complete JSON object."""
         else:
             system_prompt = f"""{formatted_system_prompt}
 
 Format your response using this JSON schema:
-{json.dumps(compact_schema, indent=2)}"""
+{json.dumps(compact_schema, indent=2)}
+
+Output ONLY the JSON object."""
         
         schema_time = time.time() - schema_start
         logger.info(f"[TIMING] Schema generation took {schema_time:.3f}s")
@@ -401,9 +383,10 @@ Format your response using this JSON schema:
             conversation_history = self.get_conversation_history()
         
         # OPTIMIZE: Limit history to save tokens
-        if len(conversation_history) > config.MAX_CONVERSATION_HISTORY:
-            conversation_history = conversation_history[-config.MAX_CONVERSATION_HISTORY:]
-            logger.info(f"[OPTIMIZATION] Trimmed history to last {config.MAX_CONVERSATION_HISTORY} messages")
+        # Reduced to 4 messages (2 exchanges) to mitigate rate limits
+        if len(conversation_history) > 4:
+            conversation_history = conversation_history[-4:]
+            logger.info(f"[OPTIMIZATION] Trimmed history to last 4 messages")
         
         # Prepare messages
         messages = [
@@ -412,18 +395,26 @@ Format your response using this JSON schema:
             {"role": "user", "content": user_input}
         ]
         
-        # Make API call
-        api_start = time.time()
-        
+        # Prepare API call
         api_payload = {
-            "model": model,  # Use the specified model
+            "model": model,
             "messages": messages,
             "temperature": config.LLM_TEMPERATURE,
             "top_p": config.LLM_TOP_P,
-            "max_tokens": config.MAX_LLM_TOKENS,  # Use optimized token limit
-            "response_format": {"type": "json_object"},
+            "max_tokens": config.MAX_LLM_TOKENS,
             "stream": False
         }
+        
+        # Use strict JSON mode ONLY for primary model (usually 70b+)
+        # Fallback models (like 8b) often fail Groq's strict JSON check with non-English text
+        if not is_fallback and "8b" not in model.lower():
+            api_payload["response_format"] = {"type": "json_object"}
+        else:
+            # For fallback, add a very simple reminder as the last message
+            messages.append({"role": "system", "content": "Respond ONLY with a valid JSON object matching the requested schema."})
+        
+        # Make API call
+        api_start = time.time()
         
         async with self.session.post(
             config.GROQ_URL,
@@ -496,25 +487,61 @@ Format your response using this JSON schema:
         }
 
     def _parse_fallback_response(self, response_content):
-        """Attempt to parse response when validation fails"""
+        """Attempt to parse response when validation fails or strict mode is off"""
         try:
-            raw_json = json.loads(response_content)
-            default_values = {}
+            # First, try to repair potential truncation (EOF errors)
+            text = self._repair_truncated_json(response_content.strip())
             
+            # Try to find JSON block if it's embedded in text
+            if '{' in text and '}' in text:
+                start = text.find('{')
+                end = text.rfind('}') + 1
+                json_str = text[start:end]
+                raw_json = json.loads(json_str)
+            else:
+                raw_json = json.loads(text)
+                
+            default_values = {}
             if self.dynamic_fields:
                 for field in self.dynamic_fields.keys():
                     default_values[field] = raw_json.get(field, 'none')
             
             default_values['response'] = raw_json.get('response', "Could you repeat that?")
-            
             return self.ResponseModel(**default_values)
-        except:
-            # Ultimate fallback
+            
+        except Exception as e:
+            logger.error(f"[EXTRACTOR] Manual JSON extraction failed: {e}")
+            # Ultimate fallback if everything fails
             default_values = {'response': "I didn't catch that. Could you say that again?"}
             if self.dynamic_fields:
                 for field in self.dynamic_fields.keys():
                     default_values[field] = 'none'
             return self.ResponseModel(**default_values)
+
+    def _repair_truncated_json(self, json_str: str) -> str:
+        """Attempts to fix truncated JSON strings from a cut-off LLM response"""
+        if not json_str or not json_str.startswith("{"):
+            return json_str
+            
+        # Count braces
+        open_braces = json_str.count("{")
+        close_braces = json_str.count("}")
+        
+        # If open == close, maybe it's just a validation error, not truncation
+        if open_braces <= close_braces:
+            return json_str
+            
+        # If we have an open quote at the end, close it
+        if json_str.count('"') % 2 != 0:
+            json_str += '"'
+            
+        # Add missing close braces
+        while open_braces > close_braces:
+            json_str += ' }'
+            close_braces += 1
+            
+        logger.warning(f"[REPAIR] Successfully closed truncated JSON: {json_str[-20:]}")
+        return json_str
     
     async def close(self):
         """Close LLM service and cleanup resources"""

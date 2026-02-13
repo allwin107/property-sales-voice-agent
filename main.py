@@ -236,14 +236,18 @@ async def initialize_call_session(session_id: str, websocket: WebSocket):
         api_key=stt_api_key
     )
     
-    tts_kwargs = {}
+    tts_kwargs = {
+        'language': config.TTS_LANGUAGE,
+        'speed': config.CARTESIA_SPEED if config.TTS_PROVIDER == 'cartesia' else config.SARVAM_SPEED
+    }
     if config.TTS_PROVIDER == 'cartesia':
-        tts_kwargs = {'model_id': config.CARTESIA_MODEL_ID, 'speed': config.CARTESIA_SPEED}
+        # Use multilingual model for non-English
+        tts_kwargs['model_id'] = 'sonic-multilingual' if config.LANGUAGE != 'english' else config.CARTESIA_MODEL_ID
     
     tts_service = TTSServiceFactory.create(
         provider=config.TTS_PROVIDER,
         api_key=tts_api_key,
-        voice_id=config.CARTESIA_VOICE_ID if config.TTS_PROVIDER == 'cartesia' else config.SARVAM_VOICE_ID,
+        voice_id=config.VOICE_ID,
         **tts_kwargs
     )
     
@@ -281,7 +285,9 @@ async def initialize_call_session(session_id: str, websocket: WebSocket):
     
     # Send greeting with first name only
     first_name = form_data['name'].strip().split()[0] if form_data['name'] else "there"
-    greeting = f"Hi, am I speaking with {first_name}?"
+    
+    # Use centralized greeting from config
+    greeting = config.GREETING_TEMPLATE.format(name=first_name)
     
     await tts_service.synthesize(
         text=greeting,

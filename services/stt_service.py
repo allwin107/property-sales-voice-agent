@@ -60,7 +60,7 @@ class DeepgramSTTService(BaseSTTService):
         """
         init_start = time.time()
         try:
-            logger.info(f"[STT] Initializing Deepgram STT service with encoding: {encoding}")
+            logger.info(f"[STT] Initializing Deepgram STT service with encoding: {encoding}, language: {config.STT_LANGUAGE}")
             
             # Store the callback function
             if callback:
@@ -139,7 +139,7 @@ class DeepgramSTTService(BaseSTTService):
             # Configure options
             options = LiveOptions(
                 model=config.DEEPGRAM_MODEL,
-                language=config.DEEPGRAM_LANGUAGE,
+                language=config.STT_LANGUAGE,  # Dynamic language
                 smart_format=True,
                 encoding=encoding,
                 channels=1,
