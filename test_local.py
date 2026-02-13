@@ -28,7 +28,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Audio configuration
-SAMPLE_RATE = 8000
+SAMPLE_RATE = 16000
 CHANNELS = 1
 CHUNK_SIZE = 256
 FORMAT = pyaudio.paInt16  # 16-bit PCM
@@ -293,8 +293,11 @@ class LocalVoiceClient:
                     # Read audio chunk from microphone
                     pcm_data = self.input_stream.read(CHUNK_SIZE, exception_on_overflow=False)
                     
-                    # Add to recording
-                    self.add_to_recording(pcm_data)
+                    # ACOUSTIC FEEDBACK PREVENTION FOR RECORDING:
+                    # Only add mic data to the recording buffer if AI is NOT playing.
+                    # This prevents the AI's voice from being captured twice (direct + echo).
+                    if not self.is_playing:
+                        self.add_to_recording(pcm_data)
                     
                     # Convert PCM to mulaw for STT
                     mulaw_data = pcm_to_mulaw(pcm_data, width=2)

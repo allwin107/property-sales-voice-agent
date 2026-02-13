@@ -316,7 +316,14 @@ async def handle_transcription(text: str, session_id: str):
     ai_text = response["response"].response
     collected_data = response["raw_model_data"]
     
-    logger.info(f"[{session_id}] AI: {ai_text}")
+    # Log model usage
+    model_used = response.get("model_used", "unknown")
+    was_fallback = response.get("was_fallback", False)
+    model_info = f" (Model: {model_used})"
+    if was_fallback:
+        model_info += " [FALLBACK]"
+    
+    logger.info(f"[{session_id}] AI{model_info}: {ai_text}")
     logger.info(f"[{session_id}] Collected: {collected_data}")
     
     # Check if site visit booked

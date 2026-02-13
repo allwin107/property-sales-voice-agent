@@ -156,6 +156,8 @@ Remember: EVERY response = Acknowledge + Ask!"""
         self.dynamic_fields = None
         self.system_prompt_template = None
         self.conversation_history = []  # In-memory conversation history
+        self.current_model = None  # ADDED for fallback info
+        self.fallback_active = False  # ADDED for fallback info
         
         logger.info("GroqLLMService instance created")
     
@@ -334,191 +336,185 @@ Format your response using this JSON schema:
         self.conversation_history = []
         logger.info(f"[HISTORY] Reset conversation history (was {previous_count} messages)")
     
-    async def generate_response(
-        self,
-        user_input: str,
-        format_values: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
-        """
-        Generate AI response with structured data extraction
-        
-        Args:
-            user_input: User's message/speech
-            format_values: Optional values for system prompt formatting
-            
-        Returns:
-            Dictionary containing response, extracted data, and metadata
-        """
+    async def generate_response(self, user_input, format_values=None, conversation_history=None):
+        """Generate response with automatic fallback on rate limit"""
         generate_start = time.time()
         
         if not self.ResponseModel or not self.session:
-            raise ValueError("LLM service not initialized. Call initialize() first.")
+            raise ValueError("LLM service not initialized")
         
-        # Ensure format_values is a dictionary
-        format_values = format_values or {}
-        
-        logger.info(f"[LLM] Generating response for user input: '{user_input[:100]}...'")
-        logger.info(f"[LLM] Format values: {format_values}")
+        if format_values is None:
+            format_values = {}
         
         try:
-            # Format system prompt with values
-            prompt_start = time.time()
-            formatted_system_prompt = self.format_system_prompt(**format_values)
+            # Try with primary model
+            return await self._generate_with_model(
+                user_input=user_input,
+                format_values=format_values,
+                conversation_history=conversation_history,
+                model=config.GROQ_PRIMARY_MODEL,
+                is_fallback=False
+            )
             
-            # Generate complete system prompt with JSON schema
-            system_prompt = self.generate_system_prompt(formatted_system_prompt)
-            prompt_time = time.time() - prompt_start
-            logger.info(f"[TIMING] System prompt generation took {prompt_time:.3f}s")
+        except Exception as e:
+            error_msg = str(e)
             
-            # Add user message to history
-            self.add_to_history("user", user_input)
+            # Check if it's a rate limit error
+            if "rate limit" in error_msg.lower() and config.GROQ_USE_FALLBACK:
+                logger.warning(f"[FALLBACK] Primary model rate limited, switching to {config.GROQ_FALLBACK_MODEL}")
+                
+                try:
+                    # Retry with fallback model
+                    return await self._generate_with_model(
+                        user_input=user_input,
+                        format_values=format_values,
+                        conversation_history=conversation_history,
+                        model=config.GROQ_FALLBACK_MODEL,
+                        is_fallback=True
+                    )
+                except Exception as fallback_error:
+                    logger.error(f"[FALLBACK] Fallback model also failed: {fallback_error}")
+                    # Return default response
+                    return self._get_default_response()
+            else:
+                # Non-rate-limit error or fallback disabled
+                logger.error(f"[ERROR] LLM error (no fallback): {error_msg}")
+                return self._get_default_response()
+
+    async def _generate_with_model(self, user_input, format_values, conversation_history, model, is_fallback=False):
+        """Internal method to generate response with specific model"""
+        
+        self.current_model = model
+        self.fallback_active = is_fallback
+        
+        if is_fallback:
+            logger.info(f"[LLM] Using FALLBACK model: {model}")
+        else:
+            logger.info(f"[LLM] Using PRIMARY model: {model}")
+        
+        # Format system prompt
+        formatted_system_prompt = self.format_system_prompt(**format_values)
+        system_prompt = self.generate_system_prompt(formatted_system_prompt)
+        
+        # Get conversation history
+        if conversation_history is None:
+            conversation_history = self.get_conversation_history()
+        
+        # OPTIMIZE: Limit history to save tokens
+        if len(conversation_history) > config.MAX_CONVERSATION_HISTORY:
+            conversation_history = conversation_history[-config.MAX_CONVERSATION_HISTORY:]
+            logger.info(f"[OPTIMIZATION] Trimmed history to last {config.MAX_CONVERSATION_HISTORY} messages")
+        
+        # Prepare messages
+        messages = [
+            {"role": "system", "content": system_prompt},
+            *conversation_history,
+            {"role": "user", "content": user_input}
+        ]
+        
+        # Make API call
+        api_start = time.time()
+        
+        api_payload = {
+            "model": model,  # Use the specified model
+            "messages": messages,
+            "temperature": config.LLM_TEMPERATURE,
+            "top_p": config.LLM_TOP_P,
+            "max_tokens": config.MAX_LLM_TOKENS,  # Use optimized token limit
+            "response_format": {"type": "json_object"},
+            "stream": False
+        }
+        
+        async with self.session.post(
+            config.GROQ_URL,
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json"
+            },
+            json=api_payload
+        ) as response:
+            result = await response.json()
+            api_time = time.time() - api_start
             
-            # Prepare messages for API
-            messages = [
-                {"role": "system", "content": system_prompt},
-                *self.conversation_history
-            ]
+            # Check for errors
+            if 'error' in result:
+                error_msg = result['error'].get('message', 'Unknown error')
+                logger.error(f"[ERROR] Groq API error: {error_msg}")
+                raise Exception(f"Groq API error: {error_msg}")
             
-            logger.debug(f"[LLM] Sending {len(messages)} messages to Groq")
+            # Extract response
+            response_content = result["choices"][0]["message"]["content"]
+            token_usage = result.get("usage", {})
             
-            # Prepare API payload
-            api_payload = {
-                "model": config.GROQ_MODEL,
-                "messages": messages,
-                "temperature": config.LLM_TEMPERATURE, 
-                "top_p": config.LLM_TOP_P,
-                "max_tokens": config.LLM_MAX_TOKENS,
-                "response_format": {"type": "json_object"},
-                "stream": False
+            logger.info(f"[LLM] Model: {model}, Tokens: {token_usage.get('total_tokens', 0)}, Time: {api_time:.3f}s")
+            
+            # Parse response
+            try:
+                parsed_response = self.ResponseModel.model_validate_json(response_content)
+            except Exception as validation_error:
+                logger.error(f"[ERROR] Response validation error: {validation_error}")
+                # Fallback parsing
+                parsed_response = self._parse_fallback_response(response_content)
+            
+            # Add assistant response to history
+            self.add_to_history("assistant", parsed_response.response)
+            
+            # Check for call end
+            should_end_call = any(
+                phrase in parsed_response.response.lower() 
+                for phrase in ["goodbye", "bye", "have a great day", "thank you for your time", "take care"]
+            )
+            
+            return {
+                "response": parsed_response,
+                "should_end_call": should_end_call,
+                "raw_model_data": parsed_response.model_dump(),
+                "raw_response": response_content,
+                "token_usage": token_usage,
+                "model_used": model,
+                "was_fallback": is_fallback
             }
 
-            # Make API call to Groq with optimized parameters and retry logic for rate limits
-            api_start = time.time()
-            max_retries = config.LLM_MAX_RETRIES
-            retry_delay = config.LLM_RETRY_DELAY
+    def _get_default_response(self):
+        """Return safe default response when all models fail"""
+        default_values = {'response': "I apologize, I'm experiencing technical difficulties. Could you please repeat that?"}
+        
+        if self.dynamic_fields:
+            for field in self.dynamic_fields.keys():
+                default_values[field] = 'none'
+        
+        default_response = self.ResponseModel(**default_values)
+        
+        return {
+            "response": default_response,
+            "should_end_call": False,
+            "raw_model_data": default_response.model_dump(),
+            "raw_response": "Error: All models failed",
+            "token_usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+            "model_used": "none",
+            "was_fallback": False
+        }
+
+    def _parse_fallback_response(self, response_content):
+        """Attempt to parse response when validation fails"""
+        try:
+            raw_json = json.loads(response_content)
+            default_values = {}
             
-            async with self.session.post(
-                config.GROQ_URL,
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json"
-                },
-                json=api_payload
-            ) as response:
-                result = await response.json()
-                api_time = time.time() - api_start
-                logger.info(f"[TIMING] Groq API call took {api_time:.3f}s")
-                
-                # Check for API errors
-                if 'error' in result:
-                    error_msg = result['error'].get('message', 'Unknown error')
-                    logger.error(f"[ERROR] Groq API error: {error_msg}")
-                    raise Exception(f"Groq API error: {error_msg}")
-                
-                # Extract response content
-                response_content = result["choices"][0]["message"]["content"]
-                
-                # Extract token usage stats
-                token_usage = result.get("usage", {})
-                logger.info(f"[LLM] Token usage - Prompt: {token_usage.get('prompt_tokens', 0)}, "
-                          f"Completion: {token_usage.get('completion_tokens', 0)}, "
-                          f"Total: {token_usage.get('total_tokens', 0)}")
-                
-                logger.debug(f"[LLM] Raw Groq response: {response_content}")
-                
-                # Parse and validate response with Pydantic
-                parse_start = time.time()
-                try:
-                    parsed_response = self.ResponseModel.model_validate_json(response_content)
-                    parse_time = time.time() - parse_start
-                    logger.info(f"[TIMING] Response parsing took {parse_time:.3f}s")
-                    
-                except Exception as validation_error:
-                    logger.error(f"[ERROR] Response validation failed: {validation_error}")
-                    logger.error(f"[ERROR] Failed content: {response_content}")
-                    
-                    # Fallback: try raw JSON parsing
-                    try:
-                        raw_json = json.loads(response_content)
-                        default_values = {}
-                        
-                        # Extract dynamic fields if present
-                        if self.dynamic_fields:
-                            for field in self.dynamic_fields.keys():
-                                default_values[field] = raw_json.get(field, 'none')
-                        
-                        # Extract response field
-                        default_values['response'] = raw_json.get(
-                            'response',
-                            "I'm having trouble with my response format. Could you repeat that?"
-                        )
-                        
-                        parsed_response = self.ResponseModel(**default_values)
-                        logger.info("[RECOVERY] Successfully recovered from validation error")
-                        
-                    except Exception as e:
-                        logger.error(f"[ERROR] Failed to recover from validation error: {e}")
-                        # Ultimate fallback
-                        default_values = {
-                            'response': "I'm having trouble processing that. Could you please repeat?"
-                        }
-                        if self.dynamic_fields:
-                            for field in self.dynamic_fields.keys():
-                                default_values[field] = 'none'
-                        parsed_response = self.ResponseModel(**default_values)
-                
-                # Add assistant response to history
-                self.add_to_history("assistant", parsed_response.response)
-                
-                # Check for conversation end signals
-                should_end_call = any(
-                    phrase in parsed_response.response.lower()
-                    for phrase in ["goodbye", "bye", "take care", "have a great day"]
-                )
-                
-                total_time = time.time() - generate_start
-                logger.info(f"[TIMING] Total response generation took {total_time:.3f}s")
-                logger.info(f"[SUCCESS] Generated response: '{parsed_response.response[:100]}...'")
-                
-                return {
-                    "response": parsed_response,
-                    "should_end_call": should_end_call,
-                    "raw_model_data": parsed_response.model_dump(),
-                    "raw_response": response_content,
-                    "token_usage": token_usage,
-                    "extracted_fields": {
-                        field: getattr(parsed_response, field, 'none')
-                        for field in self.dynamic_fields.keys()
-                    } if self.dynamic_fields else {}
-                }
-                
-        except Exception as e:
-            logger.error(f"[ERROR] Groq interaction error: {e}", exc_info=True)
-            error_time = time.time() - generate_start
-            logger.info(f"[TIMING] Error occurred after {error_time:.3f}s")
+            if self.dynamic_fields:
+                for field in self.dynamic_fields.keys():
+                    default_values[field] = raw_json.get(field, 'none')
             
-            # Create error response
-            default_values = {
-                'response': "I'm having trouble with my connection. Let's continue - could you repeat that?"
-            }
+            default_values['response'] = raw_json.get('response', "Could you repeat that?")
+            
+            return self.ResponseModel(**default_values)
+        except:
+            # Ultimate fallback
+            default_values = {'response': "I didn't catch that. Could you say that again?"}
             if self.dynamic_fields:
                 for field in self.dynamic_fields.keys():
                     default_values[field] = 'none'
-            
-            default_response = self.ResponseModel(**default_values)
-            
-            return {
-                "response": default_response,
-                "should_end_call": False,
-                "raw_model_data": default_response.model_dump(),
-                "raw_response": f"Error: {str(e)}",
-                "token_usage": {
-                    "prompt_tokens": 0,
-                    "completion_tokens": 0,
-                    "total_tokens": 0
-                },
-                "extracted_fields": {}
-            }
+            return self.ResponseModel(**default_values)
     
     async def close(self):
         """Close LLM service and cleanup resources"""

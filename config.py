@@ -43,6 +43,15 @@ LLM_MAX_HISTORY = int(os.getenv("LLM_MAX_HISTORY", "10"))
 LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "3"))
 LLM_RETRY_DELAY = int(os.getenv("LLM_RETRY_DELAY", "2"))
 GROQ_URL = os.getenv("GROQ_URL", "https://api.groq.com/openai/v1/chat/completions")
+
+# LLM Configuration with Fallback
+GROQ_PRIMARY_MODEL = os.getenv("GROQ_PRIMARY_MODEL", "llama-3.3-70b-versatile")
+GROQ_FALLBACK_MODEL = os.getenv("GROQ_FALLBACK_MODEL", "llama-3.1-8b-instant")
+GROQ_USE_FALLBACK = os.getenv("GROQ_USE_FALLBACK", "true").lower() == "true"
+
+# Token optimization
+MAX_CONVERSATION_HISTORY = int(os.getenv("MAX_CONVERSATION_HISTORY", "6"))  # Last 3 exchanges
+MAX_LLM_TOKENS = int(os.getenv("MAX_LLM_TOKENS", "150"))  # Reduced from 500
 # STT - Deepgram Settings
 DEEPGRAM_MODEL = os.getenv("DEEPGRAM_MODEL", "nova-3")
 DEEPGRAM_LANGUAGE = os.getenv("DEEPGRAM_LANGUAGE", "en")

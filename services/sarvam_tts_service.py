@@ -82,7 +82,7 @@ class SarvamTTSService(BaseTTSService):
             "target_language_code": self.language or config.SARVAM_LANGUAGE,
             "speaker": self.voice_id or config.SARVAM_VOICE_ID,
             "pace": self.speed or config.SARVAM_SPEED,
-            "speech_sample_rate": 8000,
+            "speech_sample_rate": 16000,
             "enable_preprocessing": True,
             "model": self.model or config.SARVAM_MODEL
         }
